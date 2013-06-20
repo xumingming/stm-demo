@@ -55,7 +55,7 @@
                   (commute r + 200)))]
   [@t1 @t2 @r])
 
-;; commute 比alter(ref-set)的并发性能要好
+;; commute比alter(ref-set)的并发性能要好
 (time (let [r (ref 1)
             futures (for [i (range 100)]
                       (future (dosync_xumm [(str i)]
@@ -201,24 +201,38 @@
       f1 (future (dosync (Thread/sleep 1000)
                          @r))
       f2 (future (dosync (ref-set r 2)))
-      ]
+      ]x
   [@f1 @f2])
 
-;; 由于min-history > 0，所以ref-count会增加
-(let [r (ref 1 :min-history 1)
-      f1 (future (dosync (Thread/sleep 1000)
-                         (println "ref-count: " (ref-history-count r))
-                         @r))
-      f2 (future (dosync (ref-set r 2)))]
-  [@f1 @f2])
-
-;; 由于有读失败，所以ref-count会增加
+;; 探查ref-history-count
 (let [r (ref 1)
-      f1 (future (dosync (Thread/sleep 1000)
-                         (println "ref-count: " (ref-history-count r))
-                         @r))
-      f2 (future (dosync (ref-set r 2)))
-      f3 (future (dosync (Thread/sleep 1500) (ref-set r 2)))]
-  [@f1 @f2])
+      f1 (future (dosync_xumm ["f1"]
+                  (Thread/sleep 100)
+                  (ref-set r 1)))
+      f2 (future (dosync_xumm ["f2"]
+                  (Thread/sleep 200)
+                  (ref-set r 2)))]
+  [@f1 @f2]
+  (println "ref-history-count: " (ref-history-count r)))
 
+;; 由于min-history > 0，所以ref-history-count会增加
+(let [r (ref 1 :min-history 1)]
+  @(future (dosync_xumm ["f1"]
+                        (Thread/sleep 1000)
+                        (ref-set r :f1)
+                        @r))
+  (println (ref-history-count r)))
+
+;; 由于有读失败，所以ref-history-count会增加
+(let [r (ref 1)
+      f1 (future (dosync_xumm ["f1"]
+                              (Thread/sleep 1000)
+                              @r))
+      f2 (future (dosync_xumm ["f2"]
+                              (ref-set r 2)))
+      f3 (future (dosync_xumm ["f3"]
+                              (Thread/sleep 1500)
+                              (ref-set r 2)))]
+  [@f1 @f2 @f3]
+  (println "ref-history-count: " (ref-history-count r)))
 
